@@ -10,7 +10,7 @@ from code.utils.experiment import ExperimentRunner
 def main():
     # API 키 로드
     load_dotenv()
-    api_key = os.getenv("UPSTAGE_API_KEY")
+    api_key = os.getenv("up_CbbmBHzksOdVggMCcCEiwefn9vRpS")
     if not api_key:
         raise ValueError("API key not found in environment variables")
     
