@@ -99,7 +99,7 @@ from sklearn.model_selection import train_test_split
 from code.config import ExperimentConfig
 from code.prompts.templates import TEMPLATES
 from code.utils.experiment import ExperimentRunner
-from metrics import find_differences_with_offsets
+from code.utils.metrics import find_differences_with_offsets
 
 def main():
     # API 키 로드
