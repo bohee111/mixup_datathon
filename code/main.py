@@ -14,7 +14,7 @@ def main():
     # API 키 로드
     load_dotenv()
     api_key = os.getenv('UPSTAGE_API_KEY')
-    #api_key = 'up_9h6K7kElWZKWhSVHwoXvQx7KjqHdq'
+    #api_key = 'up_CbbmBHzksOdVggMCcCEiwefn9vRpS'
     if not api_key:
         raise ValueError("API key not found in environment variables")
     
