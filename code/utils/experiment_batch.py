@@ -99,7 +99,7 @@ class BatchExperimentRunner(ExperimentRunner):
     #     return pd.DataFrame(results)
     def run(self, data: pd.DataFrame) -> pd.DataFrame:
         # 1) 원본 index, id 보존
-        data = data.reset_index()            # index 컬럼 새로 생김
+        data = data.reset_index(drop=True)            # index 컬럼 새로 생김
         all_fixed = [""] * len(data)         # 자리 고정 리스트
 
         # 2) 배치 생성
