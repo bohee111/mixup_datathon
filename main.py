@@ -72,7 +72,7 @@ def main():
         experiment_name="final_submission"
     )
     
-    runner = ExperimentRunner(config, api_key)
+    runner = BatchExperimentRunner(config, api_key)
     test_results = runner.run(test)
     
     output = pd.DataFrame({
