@@ -96,9 +96,9 @@ import pandas as pd
 from dotenv import load_dotenv
 from sklearn.model_selection import train_test_split
 
-from templates import TEMPLATES
-from experiment import ExperimentRunner
 from code.config import ExperimentConfig
+from code.prompts.templates import TEMPLATES
+from code.utils.experiment import ExperimentRunner
 from metrics import find_differences_with_offsets
 
 def main():
