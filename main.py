@@ -1,4 +1,3 @@
-"""
 import os
 import pandas as pd
 from dotenv import load_dotenv
@@ -84,72 +83,6 @@ def main():
     print("\n제출 파일이 생성되었습니다: submission_baseline.csv")
     print(f"사용된 템플릿: {best_template}")
     print(f"예측된 샘플 수: {len(output)}")
-
-if __name__ == "__main__":
-    main()
-"""
-
-######################
-
-import os
-import pandas as pd
-from dotenv import load_dotenv
-from sklearn.model_selection import train_test_split
-
-from code.config import ExperimentConfig
-from code.prompts.templates import TEMPLATES
-from code.utils.experiment import ExperimentRunner
-from code.utils.metrics import find_differences_with_offsets
-
-def main():
-    # API 키 로드
-    load_dotenv()
-    api_key = os.getenv('UPSTAGE_API_KEY')
-    if not api_key:
-        raise ValueError("API key not found in .env 환경변수")
-
-    # 설정 및 runner 생성
-    config = ExperimentConfig(template_name='basic')  # 'basic', 'detailed', 'formal' 선택 가능
-    runner = ExperimentRunner(config, api_key)
-
-    # 데이터 로딩 및 분할
-    train = pd.read_csv(os.path.join(config.data_dir, 'train.csv'))
-    train_data, valid_data = train_test_split(
-        train.sample(n=config.toy_size, random_state=config.random_seed),
-        test_size=config.test_size,
-        random_state=config.random_seed
-    )
-
-    # 검증 데이터에 대한 Solar API 예측 수행
-    valid_results = runner.run(valid_data)
-
-    # 교정 실패한 문장 30개 저장
-    incorrect_examples = []
-    for i in range(len(valid_data)):
-        original = valid_data.iloc[i]['err_sentence']
-        golden = valid_data.iloc[i]['cor_sentence']
-        prediction = valid_results.iloc[i]['cor_sentence']
-
-        gold_diff = find_differences_with_offsets(original, golden)
-        pred_diff = find_differences_with_offsets(original, prediction)
-
-        if gold_diff != pred_diff:
-            incorrect_examples.append({
-                "id": valid_data.iloc[i]['id'],
-                "original": original,
-                "golden": golden,
-                "prediction": prediction
-            })
-        if len(incorrect_examples) >= 30:
-            break
-
-    # 출력
-    print("\n=== Solar API가 틀리게 교정한 검증 문장 30개 ===")
-    for idx, ex in enumerate(incorrect_examples, 1):
-        print(f"\n[{idx}] ID: {ex['id']}")
-        print("🟥 원문:     ", ex["original"])
-        print("✅ 정답:     ", ex["golden"])
-        print("🔁 교정결과: ", ex["prediction"])
 
 if __name__ == "__main__":
     main()
