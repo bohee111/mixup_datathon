@@ -5,7 +5,8 @@ from sklearn.model_selection import train_test_split
 
 from code.config import ExperimentConfig
 from code.prompts.templates import TEMPLATES
-from code.utils.experiment import ExperimentRunner
+from code.utils.experiment_batch import BatchExperimentRunner
+
 
 def main():
     # API 키 로드
@@ -40,7 +41,7 @@ def main():
             batch_size=5,
             experiment_name=f"toy_experiment_{template_name}"
         )
-        runner = ExperimentRunner(config, api_key)
+        runner = BatchExperimentRunner(config, api_key)
         results[template_name] = runner.run_template_experiment(train_data, valid_data)
     
     # 결과 비교
