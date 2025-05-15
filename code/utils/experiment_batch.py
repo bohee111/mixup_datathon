@@ -115,7 +115,7 @@ class BatchExperimentRunner(ExperimentRunner):
                 batch_df = futs[fut]
                 fixed_list = fut.result()
                 # 3) 각 문장을 'index' 위치에 삽입
-                for orig_idx, sent in zip(batch_df["index"], fixed_list):
+                for orig_idx, sent in zip(batch_df.index, fixed_list):
                     all_fixed[orig_idx] = sent
                 bar.update(1)
 
