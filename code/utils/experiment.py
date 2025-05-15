@@ -27,12 +27,26 @@ class ExperimentRunner:
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
         }
+
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "너는 문장의 맞춤법, 띄어쓰기, 문장 부호 오류만 판단하고 최소한으로 수정하는 교정 전문가야. "
+                    "의미나 말투, 문장 구조가 자연스럽다면 그대로 유지해야 해."
+                )
+            },
+            {
+                "role": "user",
+                "content": prompt  # ← TEMPLATES['judgment_prompt'].format(text=문장)
+            }
+        ]
+
         data = {
             "model": self.model,
-            "messages": [
-                {"role": "user", "content": prompt}
-            ]
+            "messages": messages
         }
+        
         response = requests.post(self.api_url, headers=headers, json=data)
         response.raise_for_status()
         results = response.json()
