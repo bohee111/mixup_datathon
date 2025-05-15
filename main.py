@@ -62,27 +62,28 @@ def main():
     print(f"Valid Recall: {results[best_template]['valid_recall']['recall']:.2f}%")
     print(f"Valid Precision: {results[best_template]['valid_recall']['precision']:.2f}%")
     
-    # 최고 성능 템플릿으로 제출 파일 생성
+    # Recall 60% 이상인 모든 템플릿으로 제출 파일 생성
     print("\n=== 테스트 데이터 예측 시작 ===")
-    config = ExperimentConfig(
-        template_name=best_template,
-        temperature=0.0,
-        batch_size=5,
-        experiment_name="final_submission"
-    )
-    
-    runner = ExperimentRunner(config, api_key)
-    test_results = runner.run(test)
-    
-    output = pd.DataFrame({
-        'id': test['id'],
-        'cor_sentence': test_results['cor_sentence']
-    })
-    
-    output.to_csv("submission_baseline.csv", index=False)
-    print("\n제출 파일이 생성되었습니다: submission_baseline.csv")
-    print(f"사용된 템플릿: {best_template}")
-    print(f"예측된 샘플 수: {len(output)}")
+    for template_name, result in results.items():
+        valid_recall = result['valid_recall']['recall']
+        if valid_recall >= 60.0:
+            print(f"\n✅ {template_name} 템플릿 (Recall: {valid_recall:.2f}%) → 제출 파일 생성 중...")
+            config = ExperimentConfig(
+                template_name=template_name,
+                temperature=0.0,
+                batch_size=5,
+                experiment_name=f"final_submission_{template_name}"
+            )
+            runner = ExperimentRunner(config, api_key)
+            test_results = runner.run(test)
+
+            output = pd.DataFrame({
+                'id': test['id'],
+                'cor_sentence': test_results['cor_sentence']
+            })
+            output_filename = f"submission_{template_name}.csv"
+            output.to_csv(output_filename, index=False)
+            print(f"📁 저장 완료: {output_filename}")
 
 if __name__ == "__main__":
     main()
