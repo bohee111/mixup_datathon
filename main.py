@@ -99,6 +99,7 @@ from sklearn.model_selection import train_test_split
 from config import ExperimentConfig
 from templates import TEMPLATES
 from experiment import ExperimentRunner
+from code.config import ExperimentConfig
 from metrics import find_differences_with_offsets
 
 def main():
