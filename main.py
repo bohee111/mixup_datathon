@@ -87,6 +87,29 @@ def main():
             tid = retry_test.loc[i, 'id']
             test_results.loc[test_results['id'] == tid, 'cor_sentence'] = row['cor_sentence']
 
+    # === 3차 교정 (단순 템플릿 사용) ===
+    final_empty_ids = test_results[test_results['cor_sentence'] == '<<EMPTY>>']['id']
+    print(f"2차 이후에도 남은 <<EMPTY>> 문장 수: {len(final_empty_ids)}개")
+
+    if not final_empty_ids.empty:
+        # 간단한 템플릿을 사용하는 3차 config 생성
+        fallback_config = ExperimentConfig(
+            template_name="simple_fallback",  # 위에서 등록한 간단 템플릿
+            temperature=0.0,
+            batch_size=5,
+            experiment_name="fallback_correction"
+        )
+        fallback_runner = BatchExperimentRunner(fallback_config, api_key)
+
+        fallback_test = test[test['id'].isin(final_empty_ids)].reset_index(drop=True)
+        fallback_result = fallback_runner.run(fallback_test)
+        fallback_result['cor_sentence'] = fallback_result['cor_sentence'].astype(str).apply(clean_output)
+
+        # ID 기준 덮어쓰기
+        for i, row in fallback_result.iterrows():
+            tid = fallback_test.loc[i, 'id']
+            test_results.loc[test_results['id'] == tid, 'cor_sentence'] = row['cor_sentence']
+    
     # 저장
     test_results = test_results.sort_values('id').reset_index(drop=True)
     test_results.to_csv("submission_multi_turn.csv", index=False)
