@@ -6,7 +6,6 @@ from sklearn.model_selection import train_test_split
 from code.config import ExperimentConfig
 from code.prompts.templates import TEMPLATES
 from code.utils.experiment_batch import BatchExperimentRunner
-from code.utils.metrics import evaluate_correction
 
 def clean_output(text):
     if not isinstance(text, str):
@@ -16,86 +15,117 @@ def clean_output(text):
         return "<<EMPTY>>"
     return text.split(":", 1)[-1].strip() if ":" in text else text
 
-def apply_runner(test_subset, template_name, experiment_name, api_key):
-    config = ExperimentConfig(
-        template_name=template_name,
-        temperature=0.0,
-        batch_size=5,
-        experiment_name=experiment_name
-    )
-    runner = BatchExperimentRunner(config, api_key)
-    results = runner.run(test_subset)
-    results['cor_sentence'] = results['cor_sentence'].astype(str).apply(clean_output)
-    return results
-
-def merge_results(original_df, new_df):
-    return original_df[['id']].merge(new_df, on='id', how='left')
-
-def overwrite_results(base_df, overwrite_df):
-    for i, row in overwrite_df.iterrows():
-        tid = overwrite_df.loc[i, 'id']
-        base_df.loc[base_df['id'] == tid, 'cor_sentence'] = row['cor_sentence']
-    return base_df
-
 def main():
+    # API 키 로드
     load_dotenv(dotenv_path=".env")
     api_key = os.getenv("UPSTAGE_API_KEY")
     if not api_key:
         raise ValueError("API key not found in environment variables")
 
-    base_config = ExperimentConfig(template_name='strict_template')
+    # 설정
+    base_config = ExperimentConfig(template_name='basic')
     train = pd.read_csv(os.path.join(base_config.data_dir, 'train.csv'))
     test = pd.read_csv(os.path.join(base_config.data_dir, 'test.csv'))
 
-    # train 데이터 8:2로 나누어 검증 성능 평가
+    # 토이 데이터 분할
+    toy_data = train.sample(n=base_config.toy_size, random_state=base_config.random_seed).reset_index(drop=True)
     train_data, valid_data = train_test_split(
-        train,
-        test_size=0.2,
+        toy_data,
+        test_size=base_config.test_size,
         random_state=base_config.random_seed
     )
 
-    print("\n=== 검증용 성능 평가 시작 ===")
-    valid_result = apply_runner(valid_data, "strict_template", "valid_eval", api_key)
-    valid_eval = evaluate_correction(valid_data, valid_result)
-    print(f"검증 Recall: {valid_eval['recall']:.2f}%")
-    print(f"검증 Precision: {valid_eval['precision']:.2f}%")
+    # 모든 템플릿 실험
+    results = {}
+    for template_name in TEMPLATES.keys():
+        config = ExperimentConfig(
+            template_name=template_name,
+            temperature=0.0,
+            batch_size=5,
+            experiment_name=f"toy_experiment_{template_name}"
+        )
+        runner = BatchExperimentRunner(config, api_key)
+        results[template_name] = runner.run_template_experiment(train_data, valid_data)
 
-    # 테스트 데이터 예측 시작 (멀티턴 파이프라인)
-    print("\n=== 테스트 데이터 1차 교정 시작 (strict_template) ===")
-    test_result = apply_runner(test, "strict_template", "test_strict", api_key)
-    test_results = merge_results(test, test_result)
+    # 최고 템플릿 선택
+    best_template = max(
+        results.items(),
+        key=lambda x: x[1]['valid_recall']['recall']
+    )[0]
+    print(f"\n최고 성능 템플릿: {best_template}")
+    print(f"Valid Recall: {results[best_template]['valid_recall']['recall']:.2f}%")
+    print(f"Valid Precision: {results[best_template]['valid_recall']['precision']:.2f}%")
 
-    # 2차 교정
-    print("\n=== 2차 교정 시작 (relaxed_template) ===")
-    empty_ids_1 = test_results[test_results['cor_sentence'] == '<<EMPTY>>']['id']
-    if not empty_ids_1.empty:
-        retry_test_2 = test[test['id'].isin(empty_ids_1)].reset_index(drop=True)
-        second_result = apply_runner(retry_test_2, "relaxed_template", "retry_2", api_key)
-        test_results = overwrite_results(test_results, second_result)
+    # 테스트 예측 실행
+    print("\n=== 테스트 데이터 예측 시작 ===")
+    config = ExperimentConfig(
+        template_name=best_template,
+        temperature=0.0,
+        batch_size=5,
+        experiment_name="final_submission"
+    )
+    runner = BatchExperimentRunner(config, api_key)
+    raw_result = runner.run(test)
+    raw_result['cor_sentence'] = raw_result['cor_sentence'].astype(str).apply(clean_output)
 
-    # 3차 교정
-    print("\n=== 3차 교정 시작 (simple_fallback) ===")
-    empty_ids_2 = test_results[test_results['cor_sentence'] == '<<EMPTY>>']['id']
-    if not empty_ids_2.empty:
-        retry_test_3 = test[test['id'].isin(empty_ids_2)].reset_index(drop=True)
-        third_result = apply_runner(retry_test_3, "simple_fallback", "retry_3", api_key)
-        test_results = overwrite_results(test_results, third_result)
+    # ID 기준 merge
+    test_results = test[['id']].merge(raw_result, on='id', how='left')
 
-    # 저장: 3차까지 완료된 결과
-    test_results = test_results.sort_values('id').reset_index(drop=True)
-    test_results.to_csv("submission_multi_turn.csv", index=False)
-    print(f"\n✅ 3차까지 교정 완료: submission_multi_turn.csv (총 {len(test_results)}문장)")
+    # <<EMPTY>> 문장만 재추론
+    empty_ids = test_results[test_results['cor_sentence'] == '<<EMPTY>>']['id']
+    print(f"1차 추론에서 <<EMPTY>> 문장 수: {len(empty_ids)}개")
 
-    # 4차 전체 재교정 시작
-    print("\n=== 4차 전체 재교정 시작 (final_soft_polish) ===")
+    if not empty_ids.empty:
+        retry_test = test[test['id'].isin(empty_ids)].reset_index(drop=True)
+        retry_result = runner.run(retry_test)
+        retry_result['cor_sentence'] = retry_result['cor_sentence'].astype(str).apply(clean_output)
+
+        # 2차 결과 merge
+        for i, row in retry_result.iterrows():
+            tid = retry_test.loc[i, 'id']
+            test_results.loc[test_results['id'] == tid, 'cor_sentence'] = row['cor_sentence']
+
+    # === 3차 교정 (단순 템플릿 사용) ===
+    final_empty_ids = test_results[test_results['cor_sentence'] == '<<EMPTY>>']['id']
+    print(f"2차 이후에도 남은 <<EMPTY>> 문장 수: {len(final_empty_ids)}개")
+
+    if not final_empty_ids.empty:
+        fallback_config = ExperimentConfig(
+            template_name="simple_fallback",
+            temperature=0.0,
+            batch_size=5,
+            experiment_name="fallback_correction"
+        )
+        fallback_runner = BatchExperimentRunner(fallback_config, api_key)
+
+        fallback_test = test[test['id'].isin(final_empty_ids)].reset_index(drop=True)
+        fallback_result = fallback_runner.run(fallback_test)
+        fallback_result['cor_sentence'] = fallback_result['cor_sentence'].astype(str).apply(clean_output)
+
+        for i, row in fallback_result.iterrows():
+            tid = fallback_test.loc[i, 'id']
+            test_results.loc[test_results['id'] == tid, 'cor_sentence'] = row['cor_sentence']
+
+    # === 4차 추가 나이브 교정 (전체 대상) ===
+    print("\n=== 4차 전체 재교정 시작 (naive_repair) ===")
     final_input = test_results[['id', 'cor_sentence']].rename(columns={'cor_sentence': 'err_sentence'})
-    final_result = apply_runner(final_input, "final_soft_polish", "final_polish", api_key)
-    final_submission = merge_results(test_results, final_result)
+    naive_config = ExperimentConfig(
+        template_name="naive_repair",
+        temperature=0.0,
+        batch_size=5,
+        experiment_name="final_naive"
+    )
+    naive_runner = BatchExperimentRunner(naive_config, api_key)
+    final_result = naive_runner.run(final_input)
+    final_result['cor_sentence'] = final_result['cor_sentence'].astype(str).apply(clean_output)
+    test_results = test_results[['id']].merge(final_result, on='id', how='left')
 
-    # 최종 저장
-    final_submission = final_submission.sort_values('id').reset_index(drop=True)
-    final_submission.to_csv("submission_final_polished.csv", index=False)
-    print(f"\n🎯 최종 제출 파일 저장 완료: submission_final_polished.csv (총 {len(final_submission)}문장)")
+    # 저장
+    test_results = test_results.sort_values('id').reset_index(drop=True)
+    test_results.to_csv("submission_final_polished.csv", index=False)
+    print(f"\n✅ 최종 제출 파일 생성 완료: submission_final_polished.csv")
+    print(f"예측된 문장 수: {len(test_results)}")
 
 if __name__ == "__main__":
     main()
+
