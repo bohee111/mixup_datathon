@@ -1,4 +1,4 @@
-import os
+import os 
 import pandas as pd
 from dotenv import load_dotenv
 from sklearn.model_selection import train_test_split
@@ -24,24 +24,20 @@ def main():
     if not api_key:
         raise ValueError("API key not found in environment variables")
 
-    # 기본 설정 생성
+    # 설정
     base_config = ExperimentConfig(template_name='basic')
-
-    # 데이터 로드
     train = pd.read_csv(os.path.join(base_config.data_dir, 'train.csv'))
     test = pd.read_csv(os.path.join(base_config.data_dir, 'test.csv'))
 
-    # 토이 데이터셋 생성
+    # 토이 데이터 분할
     toy_data = train.sample(n=base_config.toy_size, random_state=base_config.random_seed).reset_index(drop=True)
-
-    # train/valid 분할
     train_data, valid_data = train_test_split(
         toy_data,
         test_size=base_config.test_size,
         random_state=base_config.random_seed
     )
 
-    # 모든 템플릿으로 실험
+    # 모든 템플릿 실험
     results = {}
     for template_name in TEMPLATES.keys():
         config = ExperimentConfig(
@@ -53,7 +49,7 @@ def main():
         runner = BatchExperimentRunner(config, api_key)
         results[template_name] = runner.run_template_experiment(train_data, valid_data)
 
-    # 최고 성능 템플릿 찾기
+    # 최고 템플릿 선택
     best_template = max(
         results.items(),
         key=lambda x: x[1]['valid_recall']['recall']
@@ -62,7 +58,7 @@ def main():
     print(f"Valid Recall: {results[best_template]['valid_recall']['recall']:.2f}%")
     print(f"Valid Precision: {results[best_template]['valid_recall']['precision']:.2f}%")
 
-    # 최고 성능 템플릿으로 예측
+    # 테스트 예측 실행
     print("\n=== 테스트 데이터 예측 시작 ===")
     config = ExperimentConfig(
         template_name=best_template,
@@ -71,20 +67,28 @@ def main():
         experiment_name="final_submission"
     )
     runner = BatchExperimentRunner(config, api_key)
-    test_results = runner.run(test)
-    test_results['cor_sentence'] = test_results['cor_sentence'].astype(str).apply(clean_output)
+    raw_result = runner.run(test)
+    raw_result['cor_sentence'] = raw_result['cor_sentence'].astype(str).apply(clean_output)
 
-    # <<EMPTY>> 문장만 다시 2차 교정
-    empty_idx = test_results['cor_sentence'].str.upper() == "<<EMPTY>>"
-    print(f"1차 추론에서 <<EMPTY>> 문장 수: {empty_idx.sum()}개")
-    if empty_idx.sum() > 0:
-        retry_test = test[empty_idx].reset_index(drop=True)
-        retry_results = runner.run(retry_test)
-        retry_results['cor_sentence'] = retry_results['cor_sentence'].astype(str).apply(clean_output)
-        test_results.loc[empty_idx, 'cor_sentence'] = retry_results['cor_sentence'].values
+    # ID 기준 merge
+    test_results = test[['id']].merge(raw_result, on='id', how='left')
 
-    # 최종 저장
-    test_results['id'] = test['id'].values  # 정렬 맞춤
+    # <<EMPTY>> 문장만 재추론
+    empty_ids = test_results[test_results['cor_sentence'] == '<<EMPTY>>']['id']
+    print(f"1차 추론에서 <<EMPTY>> 문장 수: {len(empty_ids)}개")
+
+    if not empty_ids.empty:
+        retry_test = test[test['id'].isin(empty_ids)].reset_index(drop=True)
+        retry_result = runner.run(retry_test)
+        retry_result['cor_sentence'] = retry_result['cor_sentence'].astype(str).apply(clean_output)
+
+        # 2차 결과 merge
+        for i, row in retry_result.iterrows():
+            tid = retry_test.loc[i, 'id']
+            test_results.loc[test_results['id'] == tid, 'cor_sentence'] = row['cor_sentence']
+
+    # 저장
+    test_results = test_results.sort_values('id').reset_index(drop=True)
     test_results.to_csv("submission_multi_turn.csv", index=False)
     print(f"\n✅ 최종 제출 파일 생성 완료: submission_multi_turn.csv")
     print(f"예측된 문장 수: {len(test_results)}")
@@ -92,3 +96,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
