@@ -67,3 +67,5 @@ TEMPLATES = {
 """
 
 }
+
+TEMPLATES['simple_fallback'] = "다음 문장을 맞춤법에 맞게 자연스럽게 교정하세요. 의미나 말투는 바꾸지 마세요.\n\n문장: {text}"
