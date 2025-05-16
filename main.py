@@ -73,8 +73,7 @@ def main():
     )
     
     runner = BatchExperimentRunner(config, api_key)
-    test_results = runner.run(test)
-
+    
     test_results['cor_sentence'] = test_results['cor_sentence'].apply(
         lambda s: s.split(":", 1)[-1].strip() if ":" in s else s.strip()
     )
