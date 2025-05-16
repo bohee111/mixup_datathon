@@ -72,12 +72,5 @@ TEMPLATES["strict_template"] ="""
 TEMPLATES['simple_fallback'] = "다음 문장을 교정해주세요. 맞춤법, 문장 부호, 띄어쓰기만 고쳐주시고, 말투나 의미는 바꾸지 마세요.\\n\\n문장: {text}"
 
 
-TEMPLATES["naive_repair"] = """
-다음 문장을 교정하세요.
-- 오류가 없는 문장은 그대로 출력하세요.
-- 오류가 있는 경우 맞춤법, 띄어쓰기, 문장 부호만 수정하세요.
-
-문장: {text}
-"""
 
 
