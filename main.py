@@ -1,4 +1,4 @@
-import os
+import os 
 import pandas as pd
 from dotenv import load_dotenv
 from sklearn.model_selection import train_test_split
@@ -6,6 +6,7 @@ from sklearn.model_selection import train_test_split
 from code.config import ExperimentConfig
 from code.prompts.templates import TEMPLATES
 from code.utils.experiment_batch import BatchExperimentRunner
+from code.utils.metrics import evaluate_correction
 
 def clean_output(text):
     if not isinstance(text, str):
@@ -46,6 +47,7 @@ def main():
     train = pd.read_csv(os.path.join(base_config.data_dir, 'train.csv'))
     test = pd.read_csv(os.path.join(base_config.data_dir, 'test.csv'))
 
+    # 검증용 데이터 분할
     toy_data = train.sample(n=base_config.toy_size, random_state=base_config.random_seed).reset_index(drop=True)
     train_data, valid_data = train_test_split(
         toy_data,
@@ -53,42 +55,58 @@ def main():
         random_state=base_config.random_seed
     )
 
-    # 1차: strict 템플릿
-    print("\n=== 1차 교정 시작 (strict_template) ===")
-    first_result = apply_runner(test, "strict_template", "strict_run", api_key)
-    test_results = merge_results(test, first_result)
+    # 템플릿별 검증 실험
+    results = {}
+    for template_name in TEMPLATES.keys():
+        config = ExperimentConfig(
+            template_name=template_name,
+            temperature=0.0,
+            batch_size=5,
+            experiment_name=f"toy_experiment_{template_name}"
+        )
+        runner = BatchExperimentRunner(config, api_key)
+        results[template_name] = runner.run_template_experiment(train_data, valid_data)
 
-    # 2차: medium 템플릿
-    print("\n=== 2차 교정 시작 (medium_template) ===")
+    # 최고 템플릿 선택
+    best_template = max(
+        results.items(),
+        key=lambda x: x[1]['valid_recall']['recall']
+    )[0]
+    print(f"\n최고 성능 템플릿: {best_template}")
+    print(f"Valid Recall: {results[best_template]['valid_recall']['recall']:.2f}%")
+    print(f"Valid Precision: {results[best_template]['valid_recall']['precision']:.2f}%")
+
+    # 테스트 예측 실행
+    print("\n=== 테스트 데이터 예측 시작 ===")
+    test_result = apply_runner(test, best_template, "final_submission", api_key)
+    test_results = merge_results(test, test_result)
+
+    # 2차 교정
     empty_ids_1 = test_results[test_results['cor_sentence'] == '<<EMPTY>>']['id']
     if not empty_ids_1.empty:
         retry_test_2 = test[test['id'].isin(empty_ids_1)].reset_index(drop=True)
-        second_result = apply_runner(retry_test_2, "medium_template", "medium_run", api_key)
+        second_result = apply_runner(retry_test_2, "relaxed_template", "retry_2", api_key)
         test_results = overwrite_results(test_results, second_result)
 
-    # 3차: simple fallback 템플릿
-    print("\n=== 3차 교정 시작 (simple_fallback) ===")
+    # 3차 교정
     empty_ids_2 = test_results[test_results['cor_sentence'] == '<<EMPTY>>']['id']
     if not empty_ids_2.empty:
         retry_test_3 = test[test['id'].isin(empty_ids_2)].reset_index(drop=True)
-        third_result = apply_runner(retry_test_3, "simple_fallback", "fallback_run", api_key)
+        third_result = apply_runner(retry_test_3, "simple_fallback", "retry_3", api_key)
         test_results = overwrite_results(test_results, third_result)
 
-    # 저장: 3차까지 완료된 결과
+    # 저장
     test_results = test_results.sort_values('id').reset_index(drop=True)
     test_results.to_csv("submission_multi_turn.csv", index=False)
-    print(f"\n✅ 3차까지 교정 완료: submission_multi_turn.csv (총 {len(test_results)}문장)")
+    print(f"\n✅ 최종 제출 파일 생성 완료: submission_multi_turn.csv")
+    print(f"예측된 문장 수: {len(test_results)}")
 
-    # 4차: 전체 다시 유연하게 교정 (soft polish)
-    print("\n=== 4차 전체 재교정 시작 (final_soft_polish) ===")
-    final_input = test_results[['id', 'cor_sentence']].rename(columns={'cor_sentence': 'err_sentence'})
-    final_result = apply_runner(final_input, "final_soft_polish", "final_polish", api_key)
-    final_submission = merge_results(test_results, final_result)
-
-    # 최종 저장
-    final_submission = final_submission.sort_values('id').reset_index(drop=True)
-    final_submission.to_csv("submission_final_polished.csv", index=False)
-    print(f"\n🎯 최종 제출 파일 저장 완료: submission_final_polished.csv (총 {len(final_submission)}문장)")
+    # 검증 성능 출력
+    print("\n=== 검증 데이터 최종 성능 평가 ===")
+    valid_pred = apply_runner(valid_data, best_template, "final_valid_eval", api_key)
+    valid_eval = evaluate_correction(valid_data, valid_pred)
+    print(f"최종 검증 Recall: {valid_eval['recall']:.2f}%")
+    print(f"최종 검증 Precision: {valid_eval['precision']:.2f}%")
 
 if __name__ == "__main__":
     main()
