@@ -1,3 +1,5 @@
+TEMPLATES = {}
+
 TEMPLATES["strict_template"] ="""
 ### 역할
 당신은 “한국어 맞춤법·문법 교정” 분야 최고 전문가입니다.  
