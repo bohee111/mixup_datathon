@@ -73,13 +73,15 @@ def main():
     )
     
     runner = BatchExperimentRunner(config, api_key)
-    test_results = runner.run(test)
-    
+    test_results['cor_sentence'] = test_results['cor_sentence'].apply(lambda s: s.split(":", 1)[-1].strip())
+
+    # 길이 확인하고 잘라서 결합
+    min_len = min(len(test), len(test_results))
     output = pd.DataFrame({
-        'id': test['id'],
-        'cor_sentence': test_results['cor_sentence'].apply(lambda s: s.split(":", 1)[-1].strip())
+        "id": test["id"][:min_len],
+        "cor_sentence": test_results["cor_sentence"][:min_len]
     })
-    
+
     output.to_csv("submission_baseline.csv", index=False)
     print("\n제출 파일이 생성되었습니다: submission_baseline.csv")
     print(f"사용된 템플릿: {best_template}")
