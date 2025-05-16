@@ -74,13 +74,10 @@ def main():
     
     runner = BatchExperimentRunner(config, api_key)
     test_results = runner.run(test)
-    test_results['cor_sentence'] = test_results['cor_sentence'].apply(lambda s: s.split(":", 1)[-1].strip())
-
-    # 길이 확인하고 잘라서 결합
-    min_len = min(len(test), len(test_results))
+    
     output = pd.DataFrame({
-        "id": test["id"][:min_len],
-        "cor_sentence": test_results["cor_sentence"][:min_len]
+        'id': test['id'],
+        'cor_sentence': test_results['cor_sentence']
     })
 
     output.to_csv("submission_baseline.csv", index=False)
