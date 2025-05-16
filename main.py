@@ -77,7 +77,7 @@ def main():
     
     output = pd.DataFrame({
         'id': test['id'],
-        'cor_sentence': test_results['cor_sentence']
+        'cor_sentence': test_results['cor_sentence'].apply(lambda s: s.split(":", 1)[-1].strip())
     })
     
     output.to_csv("submission_baseline.csv", index=False)
