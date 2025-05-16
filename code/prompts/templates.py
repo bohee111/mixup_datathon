@@ -68,4 +68,4 @@ TEMPLATES = {
 
 }
 
-TEMPLATES['simple_fallback'] = "다음 문장을 맞춤법에 맞게 자연스럽게 교정하세요. 의미나 말투는 바꾸지 마세요.\n\n문장: {text}"
+TEMPLATES['simple_fallback'] = "다음 문장을 교정해주세요. 맞춤법, 문장 부호, 띄어쓰기만 고쳐주시고, 말투나 의미는 바꾸지 마세요.\\n\\n문장: {text}"
