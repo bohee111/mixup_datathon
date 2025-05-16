@@ -74,7 +74,10 @@ def main():
     
     runner = BatchExperimentRunner(config, api_key)
     test_results = runner.run(test)
-    
+
+    test_results['cor_sentence'] = test_results['cor_sentence'].apply(
+        lambda s: s.split(":", 1)[-1].strip() if ":" in s else s.strip()
+    )
     output = pd.DataFrame({
         'id': test['id'],
         'cor_sentence': test_results['cor_sentence']
@@ -84,6 +87,41 @@ def main():
     print("\n제출 파일이 생성되었습니다: submission_baseline.csv")
     print(f"사용된 템플릿: {best_template}")
     print(f"예측된 샘플 수: {len(output)}")
+
+    def clean_output(text):
+        if not isinstance(text, str):
+            return "<<EMPTY>>"
+        text = text.strip()
+        if text.upper() == "<<EMPTY>>" or text == "":
+            return "<<EMPTY>>"
+        return text.split(":", 1)[-1].strip() if ":" in text else text
+
+    # 1차 추론
+    runner = BatchExperimentRunner(config, api_key)
+    test_results = runner.run(test)
+    test_results['cor_sentence'] = test_results['cor_sentence'].astype(str).apply(clean_output)
+
+    # <<EMPTY>> 탐색
+    empty_idx = test_results['cor_sentence'].str.upper() == "<<EMPTY>>"
+    print(f"1차 추론에서 EMPTY 문장 수: {empty_idx.sum()}개")
+
+    # 2차 추론 (<<EMPTY>> 문장만)
+    if empty_idx.sum() > 0:
+        retry_test = test[empty_idx].reset_index(drop=True)
+        retry_results = runner.run(retry_test)
+        retry_results['cor_sentence'] = retry_results['cor_sentence'].astype(str).apply(clean_output)
+
+        # 2차 결과 덮어쓰기
+        test_results.loc[empty_idx, 'cor_sentence'] = retry_results['cor_sentence'].values
+
+    # 최종 제출 파일 생성
+    output = pd.DataFrame({
+        "id": test["id"],
+        "cor_sentence": test_results["cor_sentence"]
+    })
+    output.to_csv("submission_multi_turn.csv", index=False)
+    print(f"✅ 제출 파일이 생성되었습니다: submission_multi_turn.csv")
+
 
 if __name__ == "__main__":
     main()
