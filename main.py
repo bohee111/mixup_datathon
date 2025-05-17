@@ -6,7 +6,9 @@ from code.config import ExperimentConfig
 from code.prompts.templates import TEMPLATES
 from code.utils.experiment_multiturn_batch import MultiTurnBatchRunner
 from code.utils.metrics import evaluate_correction
-from code.utils.output_parser.parser import clean_column
+# main.py에서 아래처럼 고쳐주세요
+from code.utils.output_parser import clean_column
+
 
 def main():
     # 1. API 키 로드
