@@ -24,7 +24,7 @@ def rate_post(url, **kw):
 NUM = ["①","②","③","④","⑤","⑥","⑦","⑧","⑨","⑩","⑪","⑫"]
 
 class BatchExperimentRunner(ExperimentRunner):
-    """12문장씩 묶어 한 번에 요청 → 속도 10번"""
+    """12문장씩 묶어 한 번에 요청 → 속도 10배 향상"""
 
     def _build_prompt(self, batch_df: pd.DataFrame) -> str:
         lines = []
@@ -37,12 +37,16 @@ class BatchExperimentRunner(ExperimentRunner):
             "\n\n1차 과정입니다. 가장 필요한 오류만 검사해서 고침해 주세요."
         )
 
-    def _build_followup(self, previous_output: str) -> List[Dict[str, str]]:
+    def _build_followup(self, original: List[str], corrected: List[str]) -> List[Dict[str, str]]:
+        """2차 교정을 위한 멀티턴 메시지 구성"""
+        orig_text = "\n".join(f"{NUM[i]} 잘못: {original[i]}" for i in range(len(original)))
+        corr_text = "\n".join(f"{NUM[i]} 교정: {corrected[i]}" for i in range(len(corrected)))
+
         return [
-            {"role": "system", "content": "당신은 가장 유명한 한국어 맞축법 관리자입니다."},
-            {"role": "user", "content": previous_output},
-            {"role": "assistant", "content": previous_output},
-            {"role": "user", "content": "다시 조정해서 복잡한 오류가 없는지 확인해 주세요."}
+            {"role": "system", "content": "당신은 한국어 맞춤법·문법 교정 전문가입니다. 사용자의 문장을 다시 점검해 주세요."},
+            {"role": "user", "content": orig_text},
+            {"role": "assistant", "content": corr_text},
+            {"role": "user", "content": "위 문장들을 다시 확인해서 누락된 문법 오류가 있는지 점검하고, 최종적으로 교정해 주세요."}
         ]
 
     def _parse(self, text: str, k: int) -> List[str]:
@@ -60,7 +64,7 @@ class BatchExperimentRunner(ExperimentRunner):
         hdr = {"Authorization": f"Bearer {self.api_key}",
                "Content-Type": "application/json"}
 
-        # 1차 호출
+        # 1차 교정
         payload = {
             "model": self.model,
             "messages": [{"role": "user", "content": prompt}],
@@ -82,10 +86,10 @@ class BatchExperimentRunner(ExperimentRunner):
                 continue
             r.raise_for_status()
         else:
-            return list(batch_df["err_sentence"])
+            return list(batch_df["err_sentence"])  # fallback
 
-        # 2차 복정 호출 (multi-turn)
-        follow_messages = self._build_followup("\n".join(f"{NUM[i]} {s}" for i, s in enumerate(first_pass)))
+        # 2차 교정 (멀티턴)
+        follow_messages = self._build_followup(batch_df["err_sentence"].tolist(), first_pass)
         payload["messages"] = follow_messages
         r2 = rate_post(self.api_url, headers=hdr, json=payload)
         if r2.status_code == 200:
