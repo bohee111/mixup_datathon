@@ -43,12 +43,9 @@ from code.prompts.templates import TEMPLATES
 from code.utils.experiment_batch import BatchExperimentRunner
 
 def clean_output(text):
-    if not isinstance(text, str):
+    if not isinstance(text, str) or not text.strip():
         return "<<EMPTY>>"
-    text = text.strip()
-    if text.upper() == "<<EMPTY>>" or text == "":
-        return "<<EMPTY>>"
-    return text.split(":", 1)[-1].strip() if ":" in text else text
+    return text.strip()
 
 def main():
     load_dotenv(dotenv_path=".env")
