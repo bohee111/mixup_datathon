@@ -16,7 +16,7 @@ def main():
         raise ValueError("UPSTAGE_API_KEY not set")
 
     # ② 데이터
-    cfg0       = ExperimentConfig(template_name="basic")
+    cfg0       = ExperimentConfig(template_name="batch+")
     train_df   = pd.read_csv(os.path.join(cfg0.data_dir, "train.csv"))
     test_df    = pd.read_csv(os.path.join(cfg0.data_dir, "test.csv"))
     toy_df     = train_df.sample(n=cfg0.toy_size, random_state=cfg0.random_seed)
@@ -45,7 +45,7 @@ def main():
 
         # ---- 2차용 few-shot: 1차에서 틀린 validation 30문장 ----
         diff  = vl_pred1["cor_sentence"] != val_reset["cor_sentence"]
-        hard  = val_reset[diff].head(300)
+        hard  = val_reset[diff].head(500)
         fewshot = ""
         for e, c in zip(hard["err_sentence"], hard["cor_sentence"]):
             fewshot += f"잘못: {e}\n교정: {c}\n\n"
