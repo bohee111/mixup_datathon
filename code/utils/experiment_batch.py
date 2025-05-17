@@ -17,7 +17,7 @@ def rate_post(url, **kw):
     if now - _last < _interval:
         time.sleep(_interval - (now - _last))
     _last = time.time()
-    return requests.post(url, timeout=60, **kw)
+    return requests.post(url, timeout=180, **kw)
 # ──────────────────────────────────────────────────
 
 # 번호 유니코드
