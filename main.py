@@ -26,7 +26,7 @@ def main():
     train_data, valid_data = train_test_split(
         toy_data,
         test_size=base_config.test_size,
-        random_seed=base_config.random_seed
+        random_state=base_config.random_seed
     )
 
     # 5. 템플릿별 실험
