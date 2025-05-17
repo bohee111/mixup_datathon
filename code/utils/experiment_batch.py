@@ -30,14 +30,14 @@ class BatchExperimentRunner(ExperimentRunner):
     def _build_prompt(self, batch_df: pd.DataFrame) -> str:
         lines = []
         for i, err in enumerate(batch_df["err_sentence"]):
-            lines.append(f"{NUM[i]} 잘못: {err}")
+            lines.append(f"{NUM[i]} {err}")
         inputs = "\n".join(lines)
         # 템플릿 규칙(한 번만) + numbered inputs
         return (
             self.template.split("### 작업")[0]  # 규칙 부분만 재활용
             + "\n\n### 작업\n"
             + inputs
-            + "\n\n교정:"
+            + "\n\n"
         )
 
     # 응답 파싱
