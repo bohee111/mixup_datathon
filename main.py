@@ -43,9 +43,13 @@ from code.prompts.templates import TEMPLATES
 from code.utils.experiment_batch import BatchExperimentRunner
 
 def clean_output(text):
-    if not isinstance(text, str) or not text.strip():
+    if not isinstance(text, str):
         return "<<EMPTY>>"
-    return text.strip()
+    text = text.strip()
+    if not text or text.upper() == "<<EMPTY>>" or text.lower() in ['null', 'none']:
+        return "<<EMPTY>>"
+    return text
+
 
 def main():
     load_dotenv(dotenv_path=".env")
@@ -113,7 +117,7 @@ def main():
         fallback_config = ExperimentConfig(
             template_name="simple_retry_v2",
             temperature=0.3,
-            batch_size=5,
+            batch_size=3,
             experiment_name="fallback_correction"
         )
         fallback_runner = BatchExperimentRunner(fallback_config, api_key)
