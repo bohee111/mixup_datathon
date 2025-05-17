@@ -41,20 +41,7 @@ class BatchExperimentRunner(ExperimentRunner):
         ])
 
         messages = prompt.format_messages(numbered_input=numbered)
-        return [m.dict() for m in messages]
-
-    def _parse(self, text: str, k: int) -> List[str]:
-        outs = [""] * k
-        for ln in text.splitlines():
-            m = re.match(r"^[①-⑫]\s*(.+)$", ln.strip())
-            if m:
-                idx = NUM.index(ln[0])
-                if idx < k:
-                    outs[idx] = m.group(1).strip()
-        for i, s in enumerate(outs):
-            if not s:
-                outs[i] = "<<EMPTY>>"
-        return outs
+        return messages_to_dict(messages)  # ✅ 여기만 바꾸면 됩니다
 
     def _handle_batch(self, batch_df: pd.DataFrame) -> List[str]:
         messages = self._build_prompt(batch_df)
@@ -64,7 +51,7 @@ class BatchExperimentRunner(ExperimentRunner):
         }
         payload = {
             "model": self.model,
-            "messages": messages,
+            "messages": messages,  # ✅ 이제 올바른 dict 형식입니다
             "temperature": self.config.temperature,
             "max_tokens": 512,
             "top_p": 0.9,
