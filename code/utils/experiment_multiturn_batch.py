@@ -5,7 +5,8 @@ from tqdm import tqdm
 from typing import List, Dict
 from code.utils.experiment import ExperimentRunner
 from requests.exceptions import ReadTimeout, ConnectionError, HTTPError
-from code.config import ExperimentConfig  # 추가
+from code.config import ExperimentConfig
+from code.prompts.templates import TEMPLATES
 
 # 환경 설정 로드 (외부 설정값 활용)
 cfg_batch = ExperimentConfig(template_name="enhanced_korean_pro_v3")
@@ -33,9 +34,9 @@ class MultiTurnBatchRunner(ExperimentRunner):
         numbered = "\n".join(f"{NUM[i]} 잘못: {txt}" for i, txt in enumerate(batch_df["err_sentence"]))
         user = fewshot + numbered + "\n\n교정:"
         return [
-            {"role": "system",    "content": self.template.split("### 작업")[0]},
-            {"role": "assistant", "content": "네."},
-            {"role": "user",      "content": user},
+            {"role": "system",    "content": self.template["system"]},
+            {"role": "assistant", "content": self.template["assistant"]},
+            {"role": "user",      "content": self.template["user"].format(text=user)},
         ]
 
     def _call_once(self, msgs: list[dict], k: int) -> list[str]:
@@ -55,7 +56,7 @@ class MultiTurnBatchRunner(ExperimentRunner):
             try:
                 r = rpost(self.api_url, headers=hdr, json=body)
                 if r.status_code == 200:
-                    outs = [""] * k
+                    outs = ["" for _ in range(k)]
                     for ln in r.json()["choices"][0]["message"]["content"].splitlines():
                         m = _PAT.match(ln.strip())
                         if m:
@@ -96,7 +97,7 @@ class MultiTurnBatchRunner(ExperimentRunner):
 
     def run(self, data: pd.DataFrame, fewshot: str = "") -> pd.DataFrame:
         data = data.reset_index(drop=True)
-        fixed = [""] * len(data)
+        fixed = ["" for _ in range(len(data))]
 
         batches = [data.iloc[i:i + BATCH] for i in range(0, len(data), BATCH)]
         with ThreadPoolExecutor(WORKERS) as pool, tqdm(total=len(batches), desc="MultiTurn", ncols=80) as bar:
