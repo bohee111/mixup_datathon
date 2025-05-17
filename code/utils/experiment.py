@@ -17,9 +17,18 @@ class ExperimentRunner:
         self.api_url = config.api_url
         self.model = config.model
     
-    def _make_prompt(self, text: str) -> str:
+    def _make_prompt(self, row: pd.Series) -> str:
         """프롬프트 생성"""
-        return self.template.format(text=text)
+        if self.config.template_name == 'meta_auto':
+            return self.template.format(
+                text=row['err_sentence'],
+                age=row.get('age', ''),
+                source=row.get('source', ''),
+                gender=row.get('gender', '')
+            )
+        else:
+            return self.template.format(text=row['err_sentence'])
+
     
     def _call_api_single(self, prompt: str) -> str:
         """단일 문장에 대한 API 호출"""
@@ -56,7 +65,7 @@ class ExperimentRunner:
         """데이터셋에 대한 실험 실행"""
         results = []
         for _, row in tqdm(data.iterrows(), total=len(data)):
-            prompt = self._make_prompt(row['err_sentence'])
+            prompt = self._make_prompt(row)
             corrected = self._call_api_single(prompt)
             results.append({
                 'id': row['id'],
