@@ -112,7 +112,7 @@ def main():
     if not final_empty_ids.empty:
         fallback_config = ExperimentConfig(
             template_name="simple_retry_v2",
-            temperature=0.0,
+            temperature=0.3,
             batch_size=5,
             experiment_name="fallback_correction"
         )
