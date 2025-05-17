@@ -83,10 +83,10 @@ def main():
     runner_retry = MultiTurnBatchRunner(cfg_retry, api_key)
     retry_pred = runner_retry.run(skipped_df)
 
-    # 결과 저장
+    # 후처리: 말머리 제거 후 저장
+    retry_pred["cor_sentence"] = retry_pred["cor_sentence"].apply(clean_prefix)
     retry_pred.to_csv("submission_skipped_retry.csv", index=False)
     print(f"재교정된 {len(retry_pred)}개 문장을 submission_skipped_retry.csv에 저장했습니다.")
-
 
 if __name__ == "__main__":
     main()
