@@ -30,20 +30,24 @@ class BatchExperimentRunner(ExperimentRunner):
     """LangChain 기반 배치 교정"""
 
     def _build_prompt(self, batch_df: pd.DataFrame) -> List[Dict]:
-        """LangChain ChatPromptTemplate 기반 메시지 생성"""
         numbered = "\n".join([f"{NUM[i]} {s}" for i, s in enumerate(batch_df["err_sentence"])])
+    
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "당신은 한국어 맞춤법 교정 전문가입니다. "
+                    "아래 numbered 문장을 보고 각 문장의 맞춤법, 띄어쓰기, 문장 부호만 교정하세요. "
+                    "출력은 같은 번호 체계로 각 문장 하나씩 교정 결과만 보여주세요."
+                )
+            },
+            {
+                "role": "user",
+                "content": numbered
+            }
+        ]
+        return messages
 
-        prompt = ChatPromptTemplate.from_messages([
-            SystemMessagePromptTemplate.from_template(
-                "당신은 한국어 맞춤법 교정 전문가입니다. "
-                "아래 numbered 문장을 보고 각 문장의 맞춤법, 띄어쓰기, 문장 부호만 교정하세요. "
-                "출력은 같은 번호 체계로 각 문장 하나씩 교정 결과만 보여주세요."
-            ),
-            HumanMessagePromptTemplate.from_template("{numbered_input}")
-        ])
-
-        messages = prompt.format_messages(numbered_input=numbered)
-        return messages_to_dict(messages)  # ✅ 여기만 바꾸면 됩니다
 
     def _handle_batch(self, batch_df: pd.DataFrame) -> List[str]:
         messages = self._build_prompt(batch_df)
