@@ -2,12 +2,17 @@
 import os, pandas as pd
 from dotenv import load_dotenv
 from sklearn.model_selection import train_test_split
+import re
 
 from code.config import ExperimentConfig
 from code.prompts.templates import TEMPLATES
 from code.utils.experiment_multiturn_batch import MultiTurnBatchRunner
 from code.utils.metrics import evaluate_correction
 
+def clean_prefix(text: str) -> str:
+    if not isinstance(text, str):
+        return text
+    return re.sub(r'^(교정|잘못)[\s:：]*', '', text).strip()
 
 def main():
     # ① API key 로딩
@@ -17,7 +22,7 @@ def main():
         raise ValueError("UPSTAGE_API_KEY not set")
 
     # ② 데이터 로딩
-    cfg = ExperimentConfig(template_name="batch")
+    cfg = ExperimentConfig(template_name="enhanced_korean_pro_v3")
     train_df = pd.read_csv(os.path.join(cfg.data_dir, "train.csv"))
     test_df = pd.read_csv(os.path.join(cfg.data_dir, "test.csv"))
     toy_df = train_df.sample(n=cfg.toy_size, random_state=cfg.random_seed)
@@ -41,7 +46,7 @@ def main():
         fewshot += f"잘못: {e}\n교정: {c}\n\n"
 
     # ⑤ 2차 교정 (동일 템플릿 유지 or 바꿔도 OK)
-    cfg2 = ExperimentConfig(template_name="batch")  # or "batch+"
+    cfg2 = ExperimentConfig(template_name="enhanced_korean_pro_v3")
     runner2 = MultiTurnBatchRunner(cfg2, api_key)
     vl_pred2 = runner2.run(val, fewshot=fewshot)
     vl_pred2 = vl_pred2.reset_index(drop=True)
@@ -54,13 +59,16 @@ def main():
     # ⑥ 최종 예측 수행 (테스트셋)
     test_runner = MultiTurnBatchRunner(cfg2, api_key)
     test_pred = test_runner.run(test_df, fewshot=fewshot)
+
+    # 후처리: cor_sentence 말머리 제거
+    test_pred["cor_sentence"] = test_pred["cor_sentence"].apply(clean_prefix)
+
     out = pd.DataFrame({
         "id": test_df["id"],
         "cor_sentence": test_pred["cor_sentence"]
     })
     out.to_csv("submission_multiturn.csv", index=False)
     print("\nsubmission_multiturn.csv 생성 완료 — rows:", len(out))
-
 
 if __name__ == "__main__":
     main()
