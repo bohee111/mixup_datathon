@@ -73,7 +73,7 @@ def main():
         config = ExperimentConfig(
             template_name=template_name,
             temperature=0.0,
-            batch_size=5,
+            batch_size=3,
             experiment_name=f"toy_experiment_{template_name}"
         )
         runner = BatchExperimentRunner(config, api_key)
