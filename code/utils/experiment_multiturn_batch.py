@@ -8,7 +8,7 @@ from requests.exceptions import ReadTimeout, ConnectionError, HTTPError
 from code.config import ExperimentConfig  # 추가
 
 # 환경 설정 로드 (외부 설정값 활용)
-cfg_batch = ExperimentConfig()
+cfg_batch = ExperimentConfig(template_name="batch")
 BATCH = cfg_batch.batch_size    # e.g., 12
 WORKERS = cfg_batch.workers     # e.g., 8
 RETRY = 4
