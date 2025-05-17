@@ -6,8 +6,8 @@ import os
 class ExperimentConfig:
     # 템플릿 설정
     template_name: str
-    temperature: float = 0.1
-    batch_size: int = 32
+    temperature: float = 0.15
+    batch_size: int = 12
     experiment_name: Optional[str] = None
     
     # API 설정
@@ -16,7 +16,7 @@ class ExperimentConfig:
     
     # 데이터 설정
     data_dir: str = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data')
-    toy_size: int = 100
+    toy_size: int = 3000
     random_seed: int = 42
     test_size: float = 0.2
     

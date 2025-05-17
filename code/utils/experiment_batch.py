@@ -5,9 +5,9 @@ from typing import List, Dict
 from code.utils.experiment import ExperimentRunner
 
 BATCH_SIZE   = 12   # 문장 12개씩 한 프롬프트
-MAX_WORKERS  = 6    # 동시 배치 호출 수
+MAX_WORKERS  = 12   # 동시 배치 호출 수
 MAX_RETRY    = 4
-QPM_LIMIT    = 120  # 계정 허용치에 맞게
+QPM_LIMIT    = 200  # 계정 허용치에 맞게
 
 # ── 토큰 버킷 ───────────────────────────────────────
 _interval, _last = 60 / QPM_LIMIT, 0.0
@@ -56,70 +56,104 @@ class BatchExperimentRunner(ExperimentRunner):
         return outs
 
     # 재시도 포함 한 배치 처리
-    def _handle_batch(self, batch_df: pd.DataFrame) -> List[str]:
-        prompt = self._build_prompt(batch_df)
-        hdr = {"Authorization": f"Bearer {self.api_key}",
-               "Content-Type": "application/json"}
-        payload = {"model": self.model,
-                   "messages":[{"role":"user","content":prompt}],
-                   "temperature": self.config.temperature,
-                   "max_tokens": 512,
-                   "top_p": 0.9,
-                   "stop": [] }
+    # def _handle_batch(self, batch_df: pd.DataFrame) -> List[str]:
+    #     prompt = self._build_prompt(batch_df)
+    #     hdr = {"Authorization": f"Bearer {self.api_key}",
+    #            "Content-Type": "application/json"}
+    #     payload = {"model": self.model,
+    #                "messages":[{"role":"user","content":prompt}],
+    #                "temperature": self.config.temperature,
+    #                "max_tokens": 1024,
+    #                "top_p": 0.9,
+    #                "stop": [] }
 
+    #     wait = 1.0
+    #     for _ in range(MAX_RETRY):
+    #         r = rate_post(self.api_url, headers=hdr, json=payload)
+    #         if r.status_code == 200:
+    #             return self._parse(
+    #                 r.json()["choices"][0]["message"]["content"],
+    #                 len(batch_df)
+    #             )
+    #         if r.status_code == 429:
+    #             time.sleep(wait + random.random())
+    #             wait *= 2
+    #             continue
+    #         r.raise_for_status()
+    #     # 실패 시 원문 반환
+    #     return list(batch_df["err_sentence"])
+
+    def _handle_batch(self, batch_df: pd.DataFrame) -> List[str]:
+        """1차 배치 교정 → EMPTY 항목만 개별 재호출(최대 1회)"""
+        prompt = self._build_prompt(batch_df)
+        hdr = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": self.model,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": self.config.temperature,
+            "max_tokens": 1024,
+            "top_p": 0.9,
+            "stop": [],
+        }
+
+        # ---------- 1차 배치 호출 ----------
         wait = 1.0
         for _ in range(MAX_RETRY):
             r = rate_post(self.api_url, headers=hdr, json=payload)
             if r.status_code == 200:
-                return self._parse(
+                parsed = self._parse(
                     r.json()["choices"][0]["message"]["content"],
-                    len(batch_df)
+                    len(batch_df),
                 )
+                break
             if r.status_code == 429:
                 time.sleep(wait + random.random())
                 wait *= 2
                 continue
             r.raise_for_status()
-        # 실패 시 원문 반환
-        return list(batch_df["err_sentence"])
+        else:  # 모든 재시도 실패
+            return list(batch_df["err_sentence"])
 
-    # 오버라이드 run
-    # def run(self, data: pd.DataFrame) -> pd.DataFrame:
-    #     batches = [data.iloc[i:i+BATCH_SIZE]
-    #                for i in range(0, len(data), BATCH_SIZE)]
-    #     results = []
-    #     with ThreadPoolExecutor(MAX_WORKERS) as pool, \
-    #          tqdm(total=len(batches), desc="Batch") as bar:
-    #         futs = {pool.submit(self._handle_batch, b): b for b in batches}
-    #         for fut in as_completed(futs):
-    #             batch_df = futs[fut]
-    #             for _id, fixed in zip(batch_df["id"], fut.result()):
-    #                 results.append({"id": _id, "cor_sentence": fixed})
-    #             bar.update(1)
-    #     return pd.DataFrame(results)
+        # ---------- 2차 개별 재호출(EMPTY만) ----------
+        for i, txt in enumerate(parsed):
+            if txt == "<<EMPTY>>":
+                orig = batch_df.iloc[i]["err_sentence"]
+                try:
+                    single_prompt = self._make_prompt(orig)
+                    fixed = self._call_api_single(single_prompt).strip()
+                    parsed[i] = fixed or orig
+                except Exception:
+                    parsed[i] = orig   # 최후: 원문 그대로
+
+        return parsed
+
     def run(self, data: pd.DataFrame) -> pd.DataFrame:
-        # 1) 원본 index, id 보존
-        data = data.reset_index()            # index 컬럼 새로 생김
-        all_fixed = [""] * len(data)         # 자리 고정 리스트
+        # 1) 원본 순서를 0-based 연속 인덱스로 재설정  ← ★ 수정 ①
+        data = data.reset_index(drop=True)
 
-        # 2) 배치 생성
+        all_fixed = [""] * len(data)         # 자리 고정
         batches = [data.iloc[i:i+BATCH_SIZE]
-                for i in range(0, len(data), BATCH_SIZE)]
+                   for i in range(0, len(data), BATCH_SIZE)]
 
         with ThreadPoolExecutor(MAX_WORKERS) as pool, \
-            tqdm(total=len(batches), desc="Batch", ncols=80) as bar:
+             tqdm(total=len(batches), desc="Batch", ncols=80) as bar:
 
             futs = {pool.submit(self._handle_batch, b): b for b in batches}
 
             for fut in as_completed(futs):
-                batch_df = futs[fut]
+                batch_df   = futs[fut]
                 fixed_list = fut.result()
-                # 3) 각 문장을 'index' 위치에 삽입
-                for orig_idx, sent in zip(batch_df["index"], fixed_list):
-                    all_fixed[orig_idx] = sent
+                # 2) batch_df.index 는 이미 0-based이므로 바로 사용 ← ★ 수정 ②
+                for idx, sent in zip(batch_df.index, fixed_list):
+                    all_fixed[idx] = sent
                 bar.update(1)
 
+        # 3) data["id"] 역시 reset_index 후 순서가 맞음          ← ★ 수정 ③
         return pd.DataFrame({
             "id": data["id"],
             "cor_sentence": all_fixed
         })
+
