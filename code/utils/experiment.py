@@ -1,95 +1,88 @@
 import os
-import time
 import pandas as pd
-from tqdm import tqdm
-from typing import Dict, List
-import requests
+from dotenv import load_dotenv
+from sklearn.model_selection import train_test_split
 
 from code.config import ExperimentConfig
 from code.prompts.templates import TEMPLATES
-from code.utils.metrics import evaluate_correction
+from code.utils.experiment import ExperimentRunner
 
-class ExperimentRunner:
-    def __init__(self, config: ExperimentConfig, api_key: str):
-        self.config = config
-        self.api_key = api_key
-        self.template = TEMPLATES[config.template_name]
-        self.api_url = config.api_url
-        self.model = config.model
-    
-    def _make_prompt(self, row: pd.Series) -> str:
-        """프롬프트 생성"""
-        if self.config.template_name == 'meta_auto':
-            return self.template.format(
-                text=row['err_sentence'],
-                age=row.get('age', ''),
-                source=row.get('source', ''),
-                gender=row.get('gender', '')
-            )
-        else:
-            return self.template.format(text=row['err_sentence'])
+def main():
+    # API 키 로드
+    load_dotenv(dotenv_path=".env")
+    api_key = os.getenv("UPSTAGE_API_KEY")
+    if not api_key:
+        raise ValueError("API key not found in environment variables")
 
-    
-    def _call_api_single(self, prompt: str) -> str:
-        """단일 문장에 대한 API 호출"""
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
-        }
+    # 기본 설정 생성
+    base_config = ExperimentConfig(template_name='basic')
 
-        messages = [
-            {
-                "role": "system",
-                "content": (
-                    "너는 문장의 맞춤법, 띄어쓰기, 문장 부호 오류만 판단하고 최소한으로 수정하는 교정 전문가야. "
-                    "의미나 말투, 문장 구조가 자연스럽다면 그대로 유지해야 해."
-                )
-            },
-            {
-                "role": "user",
-                "content": prompt  # ← TEMPLATES['judgment_prompt'].format(text=문장)
-            }
-        ]
+    # 데이터 로드
+    train = pd.read_csv(os.path.join(base_config.data_dir, 'train.csv'))
+    test = pd.read_csv(os.path.join(base_config.data_dir, 'test.csv'))
 
-        data = {
-            "model": self.model,
-            "messages": messages
-        }
-        
-        response = requests.post(self.api_url, headers=headers, json=data)
-        response.raise_for_status()
-        results = response.json()
-        return results["choices"][0]["message"]["content"]
+    # 토이 데이터셋 생성
+    toy_data = train.sample(n=base_config.toy_size, random_state=base_config.random_seed).reset_index(drop=True)
 
-    def run(self, data: pd.DataFrame) -> pd.DataFrame:
-        """데이터셋에 대한 실험 실행"""
-        results = []
-        for _, row in tqdm(data.iterrows(), total=len(data)):
-            prompt = self._make_prompt(row)
-            corrected = self._call_api_single(prompt)
-            results.append({
-                'id': row['id'],
-                'cor_sentence': corrected
-            })
-        return pd.DataFrame(results)
+    # train/valid 분할
+    train_data, valid_data = train_test_split(
+        toy_data,
+        test_size=base_config.test_size,
+        random_state=base_config.random_seed
+    )
 
-    def run_template_experiment(self, train_data: pd.DataFrame, valid_data: pd.DataFrame) -> Dict:
-        """템플릿별 실험 실행"""
-        print(f"\n=== {self.config.template_name} 템플릿 실험 ===")
-        
-        # 학습 데이터로 실험
-        print("\n[학습 데이터 실험]")
-        train_results = self.run(train_data)
-        train_recall = evaluate_correction(train_data, train_results)
-        
-        # 검증 데이터로 실험
-        print("\n[검증 데이터 실험]")
-        valid_results = self.run(valid_data)
-        valid_recall = evaluate_correction(valid_data, valid_results)
-        
-        return {
-            'train_recall': train_recall,
-            'valid_recall': valid_recall,
-            'train_results': train_results,
-            'valid_results': valid_results
-        } 
+    # 모든 템플릿으로 실험
+    results = {}
+    for template_name in TEMPLATES.keys():
+        config = ExperimentConfig(
+            template_name=template_name,
+            temperature=0.0,
+            batch_size=5,
+            experiment_name=f"toy_experiment_{template_name}"
+        )
+        runner = ExperimentRunner(config, api_key)
+        results[template_name] = runner.run_template_experiment(train_data, valid_data)
+
+    # 결과 비교
+    print("\n=== 템플릿별 성능 비교 ===")
+    for template_name, result in results.items():
+        print(f"\n[{template_name} 템플릿]")
+        print("Train Recall:", f"{result['train_recall']['recall']:.2f}%")
+        print("Train Precision:", f"{result['train_recall']['precision']:.2f}%")
+        print("\nValid Recall:", f"{result['valid_recall']['recall']:.2f}%")
+        print("Valid Precision:", f"{result['valid_recall']['precision']:.2f}%")
+
+    # 최고 성능 템플릿 찾기
+    best_template = max(
+        results.items(), 
+        key=lambda x: x[1]['valid_recall']['recall']
+    )[0]
+
+    print(f"\n최고 성능 템플릿: {best_template}")
+    print(f"Valid Recall: {results[best_template]['valid_recall']['recall']:.2f}%")
+    print(f"Valid Precision: {results[best_template]['valid_recall']['precision']:.2f}%")
+
+    # 최고 성능 템플릿으로 제출 파일 생성
+    print("\n=== 테스트 데이터 예측 시작 ===")
+    config = ExperimentConfig(
+        template_name=best_template,
+        temperature=0.0,
+        batch_size=5,
+        experiment_name="final_submission"
+    )
+
+    runner = ExperimentRunner(config, api_key)
+    test_results = runner.run(test)
+
+    output = pd.DataFrame({
+        'id': test['id'],
+        'cor_sentence': test_results['cor_sentence']
+    })
+
+    output.to_csv("submission_baseline.csv", index=False)
+    print("\n제출 파일이 생성되었습니다: submission_baseline.csv")
+    print(f"사용된 템플릿: {best_template}")
+    print(f"예측된 샘플 수: {len(output)}")
+
+if __name__ == "__main__":
+    main()
