@@ -4,6 +4,8 @@ from tqdm import tqdm
 from typing import List, Dict
 from langchain.prompts import ChatPromptTemplate, SystemMessagePromptTemplate, HumanMessagePromptTemplate
 
+from langchain.schema import messages_to_dict
+
 from code.utils.experiment import ExperimentRunner
 
 BATCH_SIZE   = 12
