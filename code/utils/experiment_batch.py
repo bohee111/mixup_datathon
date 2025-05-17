@@ -29,6 +29,19 @@ def rate_post(url, **kw):
 class BatchExperimentRunner(ExperimentRunner):
     """LangChain 기반 배치 교정"""
 
+    def _parse(self, text: str, k: int) -> List[str]:
+        outs = [""] * k
+        for ln in text.splitlines():
+            if ln and ln[0] in NUM:
+                idx = NUM.index(ln[0])
+                if idx < k:
+                    outs[idx] = ln[2:].strip()
+        for i, s in enumerate(outs):
+            if not s:
+                outs[i] = "<<EMPTY>>"
+        return outs
+
+
     def _build_prompt(self, batch_df: pd.DataFrame) -> List[Dict]:
         numbered = "\n".join([f"{NUM[i]} {s}" for i, s in enumerate(batch_df["err_sentence"])])
     
