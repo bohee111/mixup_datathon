@@ -1,3 +1,5 @@
+# code/prompts/templates.py
+
 TEMPLATES = {
     "enhanced_korean_pro_v3": {
         "system": """
@@ -33,7 +35,7 @@ TEMPLATES = {
     },
 
     "simple_retry_v2": {
-        "system": ""
+        "system": """
 다음 문장을 맞춤법과 띄어쓰기 중심으로 교정해주세요. 의미나 문체는 바꾸지 마세요.
 """,
         "user": "문장: {text}",
