@@ -70,5 +70,23 @@ def main():
     out.to_csv("submission_multiturn.csv", index=False)
     print("\nsubmission_multiturn.csv 생성 완료 — rows:", len(out))
 
+    # ⑦ <<SKIPPED>> 문장 재교정
+    print("\n=== <<SKIPPED>> 문장 재교정 시작 ===")
+    skipped_df = pd.read_csv("submission_multiturn.csv")
+    skipped_df = skipped_df[skipped_df["cor_sentence"].str.startswith("<<SKIPPED>>")].copy()
+
+    # <<SKIPPED>> 제거한 원문 추출
+    skipped_df["err_sentence"] = skipped_df["cor_sentence"].str.replace(r"<<SKIPPED>>\\s*", "", regex=True)
+
+    # 새 템플릿으로 재교정 수행
+    cfg_retry = ExperimentConfig(template_name="simple_retry_v2")
+    runner_retry = MultiTurnBatchRunner(cfg_retry, api_key)
+    retry_pred = runner_retry.run(skipped_df)
+
+    # 결과 저장
+    retry_pred.to_csv("submission_skipped_retry.csv", index=False)
+    print(f"재교정된 {len(retry_pred)}개 문장을 submission_skipped_retry.csv에 저장했습니다.")
+
+
 if __name__ == "__main__":
     main()
