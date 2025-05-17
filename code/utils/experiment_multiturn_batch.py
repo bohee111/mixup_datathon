@@ -7,7 +7,7 @@ from code.utils.experiment import ExperimentRunner
 from requests.exceptions import ReadTimeout, ConnectionError, HTTPError
 import http
 
-BATCH = 12; WORKERS = 8; RETRY = 4; QPM = 150
+BATCH = 12; WORKERS = 12; RETRY = 2; QPM = 150
 _interval, _last = 60/QPM, 0.0
 def rpost(url, **kw):
     global _last
